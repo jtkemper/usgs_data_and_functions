@@ -1,8 +1,10 @@
 ---
 title: "Working with USGS Data and Functions"
-author: "Matthew Ross"
-date: "10/7/2019"
+author: "John Kemper & Matthew Ross"
+date: "10/8/2019"
 output: html_document
+editor_options: 
+  chunk_output_type: console
 ---
 
 ```{r setup, include=FALSE}
@@ -11,6 +13,8 @@ library(dataRetrieval)
 library(dygraphs) #Time series plotting
 library(tidyr) 
 library(xts) #Time series objects
+library(ggthemes)
+
 
 knitr::opts_chunk$set(echo = TRUE)
 ```
@@ -133,6 +137,7 @@ xts_maker <- function(df){
 wide_xts <- xts_maker(combo_data)
 wide_elc <- xts_maker(elc_q)
 
+View(wide_data)
 
 dygraph(wide_xts)
 dygraph(wide_elc)
@@ -154,6 +159,26 @@ plot). Please plot the `combo_data` dataset here.
 
 ```{r}
 
+###A function that plots discharge data
+plot_builder <- function(df) {
+  
+  plot <- df %>%
+    ggplot(.) +
+    geom_line(aes(x = Date, y = q_cfs, color = site)) +
+    theme_few() +
+    scale_color_manual(values = c("black", "red")) +
+    labs(y = "Discharge (m^3/s)", color = "Site") +
+    theme(legend.position = c(0.1, 0.9))
+    
+  
+  return(plot)
+  
+}
+
+
+plot_builder(combo_data)
+
+
 ```
 
 
@@ -166,6 +191,21 @@ Even if your function call works, why is my function "brittle?"
 Hint: hardcoding `q_cfs = X_00060_00003` could be dangerous
 
 ```{r}
+###download discharge data for one site
+q_DRKR <- q_downloader(site_no = "01589330",
+                       site_id = "Dead Run Franklintown")
+
+###plot the data
+plot_builder(q_DRKR)
+
+
+###download discharge for a second site
+q_DR5 <- q_downloader(site_no = "01589312",
+                      site_id = "Dead Run 5")
+
+###plot the data for the second site
+plot_builder(q_DR5)
+
 
 ```
 
@@ -181,6 +221,27 @@ Hint: be careful of having two `site` columns.
 
 ```{r}
 
+
+# dfspread <- spread(q_DRKR, key = site, value = q_cfs)
+
+###Function to join data 
+data_combo <- function(df1, df2) {
+  
+  q_both <- full_join(df1, df2, by = "Date", keep  = TRUE) %>%
+    select(Date, site_no.x, site.x, q_cfs.x, site_no.y, site.y, q_cfs.y)
+  
+  
+  
+  
+  return(q_both)
+  
+}
+
+
+###call the function 
+q_combo <- data_combo(q_DRKR, q_DR5)
+View(q_combo)
+
 ```
 
 
@@ -191,6 +252,38 @@ a dygraph. Here, I want you to make a similar function that preps *and* plots a 
 
 
 ```{r}
+
+##Function to prep data for a dynamic graph and make that dynamic graph
+xts_doer <- function(df) {
+  
+  ###extract the names of the sites from the dataframe
+  name1 <- sym(df$site.x[nrow(df)]) 
+  name2 <- sym(df$site.y[nrow(df)]) 
+  
+  
+  
+  ###Select the relevant columns from the df we make in the join function above 
+  ###and then rename the q column by site name
+  q_plotboth <- df %>%
+    select(Date, q_cfs.x, q_cfs.y) %>%
+    rename(!!name1 := q_cfs.x, !!name2 := q_cfs.y)
+  
+    
+  ###transform the dataframe into an xts dataframe
+  q_xts <- xts(q_plotboth %>%
+                 select(-Date),
+               order.by = q_plotboth$Date)
+  
+  ####make the dynamic graph
+  q_xts_graph <- dygraph(q_xts)
+  
+  return(q_xts_graph)
+  
+}
+
+###Call the function to make the graph
+xts_doer(q_combo)
+
 
 ```
 
